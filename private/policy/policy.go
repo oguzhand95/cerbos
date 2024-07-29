@@ -4,11 +4,13 @@
 package policy
 
 import (
+	"io"
 	"io/fs"
 
 	policyv1 "github.com/cerbos/cerbos/api/genpb/cerbos/policy/v1"
 	sourcev1 "github.com/cerbos/cerbos/api/genpb/cerbos/source/v1"
 	"github.com/cerbos/cerbos/internal/namer"
+	"github.com/cerbos/cerbos/internal/parser"
 	"github.com/cerbos/cerbos/internal/policy"
 )
 
@@ -18,6 +20,10 @@ func Wrap(p *policyv1.Policy) *sourcev1.PolicyWrapper {
 
 func ReadFromFile(fsys fs.FS, path string) (*policyv1.Policy, error) {
 	return policy.ReadPolicyFromFile(fsys, path)
+}
+
+func ReadPolicyWithSourceContextFromReader(src io.Reader) (*policyv1.Policy, parser.SourceCtx, error) {
+	return policy.ReadPolicyWithSourceContextFromReader(src)
 }
 
 func IDFromPolicyKey(key string) uint64 {
