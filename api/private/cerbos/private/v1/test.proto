@@ -202,6 +202,7 @@ message CompileTestCase {
   string main_def = 1;
   repeated cerbos.runtime.v1.CompileErrors.Err want_errors = 2;
   repeated Variables want_variables = 3;
+  uint64 want_hash = 4;
 }
 
 message CelTestCase {

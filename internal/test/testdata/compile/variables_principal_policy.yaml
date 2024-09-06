@@ -1,8 +1,9 @@
 # yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
 ---
+mainDef: example.alpha.yaml
+wantHash: "10955459594367122944"
 wantVariables:
   - scope: ""
     variables: [a, b, c, e, f, h, ab, abc, abce]
   - scope: alpha
     variables: [a, b, ab, j]
-mainDef: example.alpha.yaml

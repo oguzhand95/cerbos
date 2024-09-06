@@ -89,6 +89,18 @@
         "$ref": "#/definitions/cerbos.runtime.v1.CompileErrors.Err"
       }
     },
+    "wantHash": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+        }
+      ]
+    },
     "wantVariables": {
       "type": "array",
       "items": {

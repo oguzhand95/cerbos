@@ -1,5 +1,7 @@
 # yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
 ---
+mainDef: example.alpha.yaml
+wantHash: "15989261426845306707"
 wantVariables:
   - scope: ""
     variables: [a, b, c, l, m, ab, abc, abcl]
@@ -15,4 +17,3 @@ wantVariables:
     derivedRoles:
       - name: B
         variables: [b, c, f, h, i, hi]
-mainDef: example.alpha.yaml

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/rogpeppe/go-internal/txtar"
@@ -52,6 +53,10 @@ func TestCompile(t *testing.T) {
 			tc, archive := readTestCase(t, tcase)
 			cu := mkCompilationUnit(t, tc.MainDef, archive)
 			haveRes, haveErr := compile.Compile(cu, schemaMgr)
+			h := xxhash.New()
+			haveRes.HashPB(h, nil)
+			haveHash := h.Sum64()
+
 			if len(tc.WantErrors) > 0 {
 				errSet := new(compile.ErrorSet)
 				require.True(t, errors.As(haveErr, &errSet))
@@ -73,6 +78,7 @@ func TestCompile(t *testing.T) {
 			if len(tc.WantVariables) > 0 {
 				requireVariables(t, tc.WantVariables, haveRes)
 			}
+			require.Equal(t, tc.WantHash, haveHash)
 
 			wantRes := &runtimev1.RunnablePolicySet{}
 			require.NoError(t, protojson.Unmarshal(tcase.Want["golden"], wantRes))

@@ -2168,6 +2168,10 @@ func cerbos_private_v1_CompileTestCase_hashpb_sum(m *CompileTestCase, hasher has
 			}
 		}
 	}
+	if _, ok := ignore["cerbos.private.v1.CompileTestCase.want_hash"]; !ok {
+		_, _ = hasher.Write(protowire.AppendVarint(nil, m.GetWantHash()))
+
+	}
 }
 
 func cerbos_private_v1_EngineTestCase_hashpb_sum(m *EngineTestCase, hasher hash.Hash, ignore map[string]struct{}) {

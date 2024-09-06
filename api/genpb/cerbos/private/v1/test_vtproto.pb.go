@@ -2453,6 +2453,11 @@ func (m *CompileTestCase) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.WantHash != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.WantHash))
+		i--
+		dAtA[i] = 0x20
+	}
 	if len(m.WantVariables) > 0 {
 		for iNdEx := len(m.WantVariables) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.WantVariables[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -4957,6 +4962,9 @@ func (m *CompileTestCase) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.WantHash != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.WantHash))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -10573,6 +10581,25 @@ func (m *CompileTestCase) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WantHash", wireType)
+			}
+			m.WantHash = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.WantHash |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
