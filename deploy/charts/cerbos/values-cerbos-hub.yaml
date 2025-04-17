@@ -13,8 +13,9 @@ cerbos:
     storage:
       driver: "hub"
       hub:
+        bundleVersion: 2
         remote:
-          bundleLabel: "YOUR_LABEL" # Alternatively, add `CERBOS_HUB_BUNDLE=<YOUR_LABEL>` to the secret you created above.
+          deploymentID: "YOUR_DEPLOYMENT_ID" # Alternatively, add `CERBOS_HUB_DEPLOYMENT_ID=<YOUR_DEPLOYMENT_ID>` to the secret you created above
 
     # Configure the Hub audit backend
     audit:
