@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cerbos/cerbos/internal/evaluator"
+	"github.com/cerbos/cerbos/internal/ruletable"
+	"github.com/cerbos/cerbos/internal/storage/disk"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -62,6 +65,74 @@ func TestInspect(t *testing.T) {
 				require.ElementsMatch(t, expectedMissingPolicies, pl.missing, "expected missing policies")
 			})
 
+			t.Run("RuleTables", func(t *testing.T) {
+				expectedPolicies := testCase.RuleTablesExpectation.RuleTables
+				expectedErrors := testCase.RuleTablesExpectation.Errors
+
+				idx, err := index.Build(ctx, os.DirFS(dir))
+				var haveIdxBuildErr *index.BuildError
+				if errors.As(err, &haveIdxBuildErr) {
+					var wantIdxBuildErrs *runtimev1.IndexBuildErrors
+					expectedIdxBuildErrs, ok := expectedErrors.(*privatev1.InspectTestCase_RuleTablesExpectation_IndexBuildErrors)
+					if ok {
+						wantIdxBuildErrs = expectedIdxBuildErrs.IndexBuildErrors
+					}
+
+					require.Empty(t,
+						cmp.Diff(
+							wantIdxBuildErrs,
+							haveIdxBuildErr.IndexBuildErrors,
+							protocmp.Transform(),
+							protocmp.IgnoreFields(&sourcev1.Error{}, "context"),
+						),
+					)
+					return
+				}
+				require.NoError(t, err)
+
+				store := disk.NewFromIndexWithConf(idx, &disk.Conf{})
+				compiler, err := compile.NewManager(ctx, store)
+				require.NoError(t, err)
+
+				protoRT := ruletable.NewProtoRuletable()
+				err = ruletable.LoadPolicies(t.Context(), protoRT, compiler)
+				var haveCompileErrSet *compile.ErrorSet
+				if errors.As(err, &haveCompileErrSet) {
+					var wantCompileErrs []*runtimev1.CompileErrors_Err
+					expectedCompileErrs, ok := expectedErrors.(*privatev1.InspectTestCase_RuleTablesExpectation_CompileErrors)
+					if ok {
+						wantCompileErrs = expectedCompileErrs.CompileErrors.CompileErrors
+					}
+
+					for _, err := range haveCompileErrSet.CompileErrors {
+						t.Log(protojson.Format(err))
+					}
+
+					require.Empty(t,
+						cmp.Diff(
+							compileErrorsMap(wantCompileErrs),
+							haveCompileErrSet.CompileErrors,
+							protocmp.Transform(),
+							protocmp.IgnoreFields(&runtimev1.CompileErrors_Err{}, "context"),
+						),
+					)
+
+					return
+				}
+				require.NoError(t, err)
+
+				evalConf := &evaluator.Conf{}
+				evalConf.SetDefaults()
+				evalConf.Globals = map[string]any{"environment": "test"}
+
+				rt, err := ruletable.NewRuleTable(protoRT, evalConf, schema.NewConf(schema.EnforcementNone))
+				require.NoError(t, err)
+
+				have, err := inspect.RuleTables(rt)
+				require.NoError(t, err)
+				require.Empty(t, cmp.Diff(expectedPolicies, have, protocmp.Transform()))
+			})
+
 			t.Run("PolicySets", func(t *testing.T) {
 				expectedPolicySets := testCase.PolicySetsExpectation.PolicySets
 				expectedErrors := testCase.PolicySetsExpectation.Errors
@@ -93,7 +164,7 @@ func TestInspect(t *testing.T) {
 					var haveCompileErrSet *compile.ErrorSet
 					if errors.As(err, &haveCompileErrSet) {
 						var wantCompileErrs []*runtimev1.CompileErrors_Err
-						expectedCompileErrs, ok := expectedErrors.(*privatev1.InspectTestCase_PolicySetsExpectation_CompileErrors_)
+						expectedCompileErrs, ok := expectedErrors.(*privatev1.InspectTestCase_PolicySetsExpectation_CompileErrors)
 						if ok {
 							wantCompileErrs = expectedCompileErrs.CompileErrors.CompileErrors
 						}
