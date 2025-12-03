@@ -22,12 +22,10 @@ import (
 	runtimev1 "github.com/cerbos/cerbos/api/genpb/cerbos/runtime/v1"
 	sourcev1 "github.com/cerbos/cerbos/api/genpb/cerbos/source/v1"
 	"github.com/cerbos/cerbos/internal/compile"
-	"github.com/cerbos/cerbos/internal/evaluator"
 	"github.com/cerbos/cerbos/internal/inspect"
 	"github.com/cerbos/cerbos/internal/namer"
 	"github.com/cerbos/cerbos/internal/policy"
 	"github.com/cerbos/cerbos/internal/ruletable"
-	rtindex "github.com/cerbos/cerbos/internal/ruletable/index"
 	"github.com/cerbos/cerbos/internal/schema"
 	"github.com/cerbos/cerbos/internal/storage/disk"
 	"github.com/cerbos/cerbos/internal/storage/index"
@@ -122,11 +120,7 @@ func TestInspect(t *testing.T) {
 				}
 				require.NoError(t, err)
 
-				evalConf := &evaluator.Conf{}
-				evalConf.SetDefaults()
-				evalConf.Globals = map[string]any{"environment": "test"}
-
-				rt, err := ruletable.NewRuleTable(rtindex.NewMem(), protoRT, evalConf, schema.NewConf(schema.EnforcementNone))
+				rt, err := ruletable.NewRuleTable(protoRT)
 				require.NoError(t, err)
 
 				ins := inspect.RuleTables(rt)

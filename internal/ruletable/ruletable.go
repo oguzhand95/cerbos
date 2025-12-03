@@ -421,8 +421,6 @@ func buildRawSchemas(ctx context.Context, rt *runtimev1.RuleTable, resolver sche
 
 type RuleTable struct {
 	*runtimev1.RuleTable
-	conf                  *evaluator.Conf
-	schemaMgr             schema.Manager
 	idx                   *index.Impl
 	principalScopeMap     map[string]struct{}
 	resourceScopeMap      map[string]struct{}
@@ -436,22 +434,36 @@ type WrappedRunnableDerivedRole struct {
 	Constants map[string]any
 }
 
-func NewRuleTable(idx index.Index, protoRT *runtimev1.RuleTable, conf *evaluator.Conf, schemaConf *schema.Conf) (*RuleTable, error) {
+func NewRuleTable(protoRT *runtimev1.RuleTable, opts ...RuleTableOpt) (*RuleTable, error) {
+	options := &ruleTableOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	if options.idx == nil {
+		options.idx = index.NewMem()
+	}
+
 	rt := &RuleTable{
-		idx:  index.NewImpl(idx),
-		conf: conf,
+		idx: index.NewImpl(options.idx),
 	}
 
 	if err := rt.init(protoRT); err != nil {
 		return nil, err
 	}
 
-	var err error
-	if rt.schemaMgr, err = schema.NewStaticFromConf(schemaConf, protoRT.Schemas, protoRT.JsonSchemas); err != nil {
-		return nil, err
-	}
-
 	return rt, nil
+}
+
+type ruleTableOptions struct {
+	idx index.Index
+}
+
+type RuleTableOpt func(*ruleTableOptions)
+
+func WithIndex(idx index.Index) RuleTableOpt {
+	return func(o *ruleTableOptions) {
+		o.idx = idx
+	}
 }
 
 func (rt *RuleTable) init(protoRT *runtimev1.RuleTable) error {
@@ -747,15 +759,15 @@ func (rt *RuleTable) GetMeta(fqn string) *runtimev1.RuleTableMetadata {
 	return nil
 }
 
-func (rt *RuleTable) Check(ctx context.Context, inputs []*enginev1.CheckInput, opts ...evaluator.CheckOpt) ([]*enginev1.CheckOutput, *auditv1.AuditTrail, error) {
-	checkOpts := evaluator.NewCheckOptions(ctx, rt.conf, opts...)
+func (rt *RuleTable) Check(ctx context.Context, conf *evaluator.Conf, schemaMgr schema.Manager, inputs []*enginev1.CheckInput, opts ...evaluator.CheckOpt) ([]*enginev1.CheckOutput, *auditv1.AuditTrail, error) {
+	checkOpts := evaluator.NewCheckOptions(ctx, conf, opts...)
 	tctx := tracing.StartTracer(checkOpts.TracerSink)
 
 	// Primary use for this Evaluator interface is the ePDP, so we run the checks synchronously (for now)
 	outputs := make([]*enginev1.CheckOutput, len(inputs))
 	trail := &auditv1.AuditTrail{}
 	for i, input := range inputs {
-		out, t, err := rt.checkWithAuditTrail(ctx, tctx, checkOpts.EvalParams, input)
+		out, t, err := rt.checkWithAuditTrail(ctx, tctx, schemaMgr, checkOpts.EvalParams, input)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -767,8 +779,8 @@ func (rt *RuleTable) Check(ctx context.Context, inputs []*enginev1.CheckInput, o
 	return outputs, trail, nil
 }
 
-func (rt *RuleTable) checkWithAuditTrail(ctx context.Context, tctx tracer.Context, evalParams evaluator.EvalParams, input *enginev1.CheckInput) (*enginev1.CheckOutput, *auditv1.AuditTrail, error) {
-	result, err := rt.check(ctx, tctx, evalParams, input)
+func (rt *RuleTable) checkWithAuditTrail(ctx context.Context, tctx tracer.Context, schemaMgr schema.Manager, evalParams evaluator.EvalParams, input *enginev1.CheckInput) (*enginev1.CheckOutput, *auditv1.AuditTrail, error) {
+	result, err := rt.check(ctx, tctx, schemaMgr, evalParams, input)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -805,7 +817,7 @@ func (rt *RuleTable) checkWithAuditTrail(ctx context.Context, tctx tracer.Contex
 	return output, result.auditTrail, nil
 }
 
-func (rt *RuleTable) check(ctx context.Context, tctx tracer.Context, evalParams evaluator.EvalParams, input *enginev1.CheckInput) (*policyEvalResult, error) {
+func (rt *RuleTable) check(ctx context.Context, tctx tracer.Context, schemaMgr schema.Manager, evalParams evaluator.EvalParams, input *enginev1.CheckInput) (*policyEvalResult, error) {
 	_, span := tracing.StartSpan(ctx, "engine.Check")
 	defer span.End()
 
@@ -836,7 +848,7 @@ func (rt *RuleTable) check(ctx context.Context, tctx tracer.Context, evalParams 
 	pctx := tctx.StartPolicy(fqn)
 
 	// validate the input
-	vr, err := rt.schemaMgr.ValidateCheckInput(ctx, rt.GetSchema(fqn), input)
+	vr, err := schemaMgr.ValidateCheckInput(ctx, rt.GetSchema(fqn), input)
 	if err != nil {
 		pctx.Failed(err, "Error during validation")
 
@@ -1505,16 +1517,16 @@ func (ec *EvalContext) evaluateCELExprToRaw(ctx context.Context, expr *exprpb.Ch
 	return result.Value(), nil
 }
 
-func (rt *RuleTable) Plan(ctx context.Context, input *enginev1.PlanResourcesInput, opts ...evaluator.CheckOpt) (*enginev1.PlanResourcesOutput, *auditv1.AuditTrail, error) {
-	checkOpts := evaluator.NewCheckOptions(ctx, rt.conf, opts...)
+func (rt *RuleTable) Plan(ctx context.Context, conf *evaluator.Conf, schemaMgr schema.Manager, input *enginev1.PlanResourcesInput, opts ...evaluator.CheckOpt) (*enginev1.PlanResourcesOutput, *auditv1.AuditTrail, error) {
+	checkOpts := evaluator.NewCheckOptions(ctx, conf, opts...)
 
 	principalVersion := evaluator.PolicyVersion(input.Principal.PolicyVersion, checkOpts.EvalParams)
 	resourceVersion := evaluator.PolicyVersion(input.Resource.PolicyVersion, checkOpts.EvalParams)
 
-	return rt.planWithAuditTrail(ctx, input, principalVersion, resourceVersion, checkOpts.NowFunc(), checkOpts.Globals())
+	return rt.planWithAuditTrail(ctx, schemaMgr, input, principalVersion, resourceVersion, checkOpts.NowFunc(), checkOpts.Globals())
 }
 
-func (rt *RuleTable) planWithAuditTrail(ctx context.Context, input *enginev1.PlanResourcesInput, principalVersion, resourceVersion string, nowFunc conditions.NowFunc, globals map[string]any) (*enginev1.PlanResourcesOutput, *auditv1.AuditTrail, error) {
+func (rt *RuleTable) planWithAuditTrail(ctx context.Context, schemaMgr schema.Manager, input *enginev1.PlanResourcesInput, principalVersion, resourceVersion string, nowFunc conditions.NowFunc, globals map[string]any) (*enginev1.PlanResourcesOutput, *auditv1.AuditTrail, error) {
 	fqn := namer.ResourcePolicyFQN(input.Resource.Kind, resourceVersion, input.Resource.Scope)
 
 	_, span := tracing.StartSpan(ctx, "engine.Plan")
@@ -1532,7 +1544,7 @@ func (rt *RuleTable) planWithAuditTrail(ctx context.Context, input *enginev1.Pla
 
 	filters := make([]*enginev1.PlanResourcesFilter, 0, len(input.Actions))
 	matchedScopes := make(map[string]string, len(input.Actions))
-	vr, err := rt.schemaMgr.ValidatePlanResourcesInput(ctx, rt.GetSchema(fqn), input)
+	vr, err := schemaMgr.ValidatePlanResourcesInput(ctx, rt.GetSchema(fqn), input)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to validate input: %w", err)
 	}
@@ -1829,8 +1841,8 @@ func (rt *RuleTable) planWithAuditTrail(ctx context.Context, input *enginev1.Pla
 	return output, auditTrail, nil
 }
 
-func (rt *RuleTable) Evaluator() evaluator.Evaluator {
-	return (*ruletableEvaluator)(rt)
+func (rt *RuleTable) Evaluator(evalConf *evaluator.Conf, schemaConf *schema.Conf) (evaluator.Evaluator, error) {
+	return NewEvaluator(evalConf, schemaConf, rt)
 }
 
 // ListRuleTableRowActions returns unique list of actions in a rule table row.

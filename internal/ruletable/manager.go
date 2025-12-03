@@ -19,38 +19,36 @@ import (
 	"github.com/cerbos/cerbos/internal/evaluator"
 	"github.com/cerbos/cerbos/internal/namer"
 	"github.com/cerbos/cerbos/internal/observability/logging"
-	"github.com/cerbos/cerbos/internal/ruletable/index"
 	"github.com/cerbos/cerbos/internal/schema"
 	"github.com/cerbos/cerbos/internal/storage"
 )
 
 type Manager struct {
 	*RuleTable
+	conf         *evaluator.Conf
 	policyLoader policyloader.PolicyLoader
+	schemaMgr    schema.Manager
 	log          *logging.Logger
 	mu           sync.RWMutex
 }
 
 func NewRuleTableManager(protoRT *runtimev1.RuleTable, policyLoader policyloader.PolicyLoader, schemaMgr schema.Manager) (*Manager, error) {
+	rt, err := NewRuleTable(protoRT)
+	if err != nil {
+		return nil, err
+	}
+
 	conf, err := evaluator.GetConf()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read engine configuration: %w", err)
 	}
 
-	rt := &RuleTable{
-		conf:      conf,
-		schemaMgr: schemaMgr,
-		idx:       index.NewImpl(index.NewMem()),
-	}
-
-	if err := rt.init(protoRT); err != nil {
-		return nil, err
-	}
-
 	return &Manager{
+		conf:         conf,
 		log:          logging.NewLogger("ruletable"),
-		RuleTable:    rt,
 		policyLoader: policyLoader,
+		schemaMgr:    schemaMgr,
+		RuleTable:    rt,
 	}, nil
 }
 
@@ -58,14 +56,14 @@ func (mgr *Manager) Check(ctx context.Context, tctx tracer.Context, evalParams e
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
-	return mgr.checkWithAuditTrail(ctx, tctx, evalParams, input)
+	return mgr.checkWithAuditTrail(ctx, tctx, mgr.schemaMgr, evalParams, input)
 }
 
 func (mgr *Manager) Plan(ctx context.Context, input *enginev1.PlanResourcesInput, principalVersion, resourceVersion string, nowFunc conditions.NowFunc, globals map[string]any) (*enginev1.PlanResourcesOutput, *auditv1.AuditTrail, error) {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
-	return mgr.planWithAuditTrail(ctx, input, principalVersion, resourceVersion, nowFunc, globals)
+	return mgr.planWithAuditTrail(ctx, mgr.schemaMgr, input, principalVersion, resourceVersion, nowFunc, globals)
 }
 
 func (mgr *Manager) SubscriberID() string {
