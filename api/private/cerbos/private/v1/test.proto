@@ -22,6 +22,17 @@ import "google/protobuf/wrappers.proto";
 
 option go_package = "github.com/cerbos/cerbos/api/genpb/cerbos/private/v1;privatev1";
 
+message AuxDataTestCase {
+  message Input {
+    string key = 1;
+    bool pem = 2;
+  }
+
+  string description = 1;
+  Input input = 2;
+  string want_err = 3;
+}
+
 message InspectTestCase {
   message CompileErrors {
     repeated cerbos.runtime.v1.CompileErrors.Err compile_errors = 1;
